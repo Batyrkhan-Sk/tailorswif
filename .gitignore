@@ -13,3 +13,5 @@ runs/
 __pycache__/
 *.pyc
 .env
+assets/splats/*.ply
+assets/plates/
