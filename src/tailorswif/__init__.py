@@ -1,8 +1,10 @@
 """tailorswif - controlled surrealism, phase 0.
 
-Nothing here generates a music video yet, on purpose. This is the Deadpan Test:
-the smallest experiment that answers whether the target register is reachable
-with current models, and the ranking tool that turns your judgement into data.
+Nothing here generates a full music video yet, on purpose. This builds one
+short sequence - twelve shots, one world, one escalation - and gives you the
+tools to judge it. The point is to find out whether the register is reachable
+before committing to a pipeline, and to end up with something you can show
+someone rather than only a finding.
 """
 
 from __future__ import annotations
@@ -11,6 +13,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import sequence as seq
+from .assemble import build
 from .banned import ConceptRejected
 from .experiment import EXPERIMENT_NAME, matrix, pair_count
 from .ledger import Ledger
@@ -36,19 +40,53 @@ def _provider(name: str):
     raise SystemExit(f"unknown provider: {name}")
 
 
+def _jobs(mode: str) -> list[tuple[str, object]]:
+    return seq.plan() if mode == "sequence" else matrix()
+
+
+def _run_name(mode: str) -> str:
+    return seq.SEQUENCE_NAME if mode == "sequence" else EXPERIMENT_NAME
+
+
+def _take_id(mode: str, model: str, shot) -> str:
+    if mode == "sequence":
+        return f"{seq.SEQUENCE_NAME}.{model}.{shot.order:02d}"
+    return f"{EXPERIMENT_NAME}.{model}.{shot.staging.key}"
+
+
+# --------------------------------------------------------------------------- #
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
-    """Print the full matrix and what it would cost. Spends nothing."""
-    total = 0.0
-    for model_key, shot in matrix():
-        spec = CATALOG[model_key]
-        cost = spec.price(shot.render_duration_s)
-        total += cost
-        print(f"\n\033[1m{model_key} / {shot.staging.key}\033[0m  "
-              f"{shot.render_duration_s:.0f}s  ${cost:.2f}")
-        print(f"  {shot.staging.label}")
-        print(f"  {shot.prompt()}")
-    n = len(matrix())
-    print(f"\n{n} takes, {pair_count(n)} comparisons, ${total:.2f} to run.")
+    """Print what would be rendered and what it costs. Spends nothing."""
+    jobs = _jobs(args.mode)
+    total = sum(
+        CATALOG[m].price(s.render_duration_s) for m, s in jobs
+    )
+
+    if args.mode == "sequence":
+        print(f"\n\033[1m{seq.SEQUENCE_NAME}\033[0m  "
+              f"{len(seq.SHOTS)} shots, {seq.runtime_s():.0f}s cut\n")
+        for shot in seq.SHOTS:
+            probe = " +probe" if shot.order in seq.PROBE_ORDERS else ""
+            print(f"  {shot.order:02d}  stage {shot.stage}  "
+                  f"{shot.duration_s:>4.1f}s  {shot.staging.key:<18}{probe}")
+            print(f"      {shot.anomaly or '(no anomaly - the world behaving)'}")
+        if args.verbose:
+            print("\n  --- prompts ---")
+            for shot in seq.SHOTS:
+                print(f"\n  [{shot.order:02d}] {shot.prompt()}")
+    else:
+        for model, shot in jobs:
+            print(f"\n\033[1m{model} / {shot.staging.key}\033[0m  "
+                  f"{shot.render_duration_s:.0f}s")
+            print(f"  {shot.prompt()}")
+
+    n = len(jobs)
+    print(f"\n{n} renders, ${total:.2f} to run.")
+    if args.mode == "sequence":
+        print(f"{len(seq.PROBE_ORDERS) * len(seq.PROBE_MODELS)} of those are "
+              f"probes on {', '.join(seq.PROBE_MODELS)} for the model comparison.")
     return 0
 
 
@@ -56,15 +94,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     ledger = Ledger(args.ledger)
     provider = _provider(args.provider)
     budget = Budget(ceiling_usd=args.budget)
-    root = Path(args.root) / EXPERIMENT_NAME
+    name = _run_name(args.mode)
+    root = Path(args.root) / name
 
     ok = failed = 0
-    for model_key, shot in matrix():
-        spec = CATALOG[model_key]
-        take_id = f"{EXPERIMENT_NAME}.{model_key}.{shot.staging.key}"
+    for model, shot in _jobs(args.mode):
+        spec = CATALOG[model]
+        take_id = _take_id(args.mode, model, shot)
         out = root / f"{take_id}.mp4"
         if out.exists() or out.with_suffix(".txt").exists():
-            print(f"skip  {take_id} (already rendered)")
+            print(f"skip  {take_id}")
             continue
 
         quote = spec.price(shot.render_duration_s)
@@ -82,14 +121,15 @@ def cmd_run(args: argparse.Namespace) -> int:
                 duration_s=shot.render_duration_s,
                 out_path=str(out),
             )
-        except Exception as exc:  # provider failures must not lose the run
+        except Exception as exc:  # a provider failure must not lose the run
             budget.release(quote)
             failed += 1
             print(f"failed: {exc}")
             ledger.record_take(
-                take_id=take_id, shot_id=shot.shot_id, experiment=EXPERIMENT_NAME,
-                provider=provider.name, model=model_key, prompt=shot.prompt(),
-                staging=shot.staging.key, status="failed", reject_reason=str(exc)[:200],
+                take_id=take_id, shot_id=shot.shot_id, experiment=name,
+                provider=provider.name, model=model, prompt=shot.prompt(),
+                staging=shot.staging.key, status="failed",
+                reject_reason=str(exc)[:200],
             )
             continue
 
@@ -97,22 +137,58 @@ def cmd_run(args: argparse.Namespace) -> int:
         ok += 1
         print(f"ok  (${actual:.2f})")
         ledger.record_take(
-            take_id=take_id, shot_id=shot.shot_id, experiment=EXPERIMENT_NAME,
-            provider=provider.name, model=model_key, prompt=shot.prompt(),
+            take_id=take_id, shot_id=shot.shot_id, experiment=name,
+            provider=provider.name, model=model, prompt=shot.prompt(),
             staging=shot.staging.key, path=str(out), cost_usd=actual, status="ok",
         )
 
-    print(f"\n{ok} ok, {failed} failed, ${budget.spent_usd:.2f} spent "
-          f"of ${budget.ceiling_usd:.2f}")
-    if ok:
+    print(f"\n{ok} ok, {failed} failed, ${budget.spent_usd:.2f} of "
+          f"${budget.ceiling_usd:.2f}")
+    if ok and args.mode == "sequence":
+        print("next: uv run tailorswif assemble")
+    elif ok:
         print(f"next: uv run tailorswif rank   ({pair_count(ok)} comparisons)")
+    return 0
+
+
+def cmd_assemble(args: argparse.Namespace) -> int:
+    """Cut the sequence: trim handles, normalise, grade to match, concatenate."""
+    root = Path(args.root) / seq.SEQUENCE_NAME
+    clips = [
+        (root / f"{seq.SEQUENCE_NAME}.{args.model}.{shot.order:02d}.mp4",
+         shot.duration_s)
+        for shot in seq.SHOTS
+    ]
+    missing = [p.name for p, _ in clips if not p.exists()]
+    if missing:
+        print(f"missing {len(missing)} of {len(clips)} clips:", file=sys.stderr)
+        for name in missing[:5]:
+            print(f"  {name}", file=sys.stderr)
+        if len(missing) > 5:
+            print(f"  ... and {len(missing) - 5} more", file=sys.stderr)
+
+    out = Path(args.out or (Path(args.root) / f"{seq.SEQUENCE_NAME}.mp4"))
+    try:
+        built = build(
+            clips, out,
+            handles_s=0.5,
+            grade=not args.no_grade,
+            audio=Path(args.audio) if args.audio else None,
+        )
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"assemble failed: {exc}", file=sys.stderr)
+        return 1
+
+    size_mb = built.stat().st_size / 1e6
+    print(f"\n{built}  ({size_mb:.1f} MB)")
+    print("open it, then: uv run tailorswif rank")
     return 0
 
 
 def cmd_rank(args: argparse.Namespace) -> int:
     serve(
         Ledger(args.ledger),
-        EXPERIMENT_NAME,
+        _run_name(args.mode),
         criterion=args.criterion,
         root=args.root,
         port=args.port,
@@ -122,19 +198,20 @@ def cmd_rank(args: argparse.Namespace) -> int:
 
 def cmd_results(args: argparse.Namespace) -> int:
     ledger = Ledger(args.ledger)
-    stats = ledger.stats(EXPERIMENT_NAME)
+    name = _run_name(args.mode)
+    stats = ledger.stats(name)
     triples = [
         (c["left_id"], c["right_id"], c["winner_id"])
-        for c in ledger.comparisons(EXPERIMENT_NAME)
+        for c in ledger.comparisons(name)
         if c["criterion"] == args.criterion
     ]
-    take_ids = [r["take_id"] for r in ledger.takes(EXPERIMENT_NAME)]
+    take_ids = [r["take_id"] for r in ledger.takes(name)]
     rated = elo(triples, take_ids=take_ids)
 
-    print(f"\n\033[1m{EXPERIMENT_NAME}\033[0m  {args.criterion}")
+    print(f"\n\033[1m{name}\033[0m  {args.criterion}")
     print(f"{stats.takes} takes, {stats.usable} usable, ${stats.spend_usd:.2f} spent")
     ratio = stats.generations_per_usable_shot
-    print(f"generations per usable shot: {ratio if ratio else '-'}   (target < 2)\n")
+    print(f"generations per usable shot: {ratio or '-'}   (target < 2)\n")
 
     if not triples:
         print("no comparisons yet - run `uv run tailorswif rank`")
@@ -143,28 +220,40 @@ def cmd_results(args: argparse.Namespace) -> int:
     for r in rated:
         print(f"  {r.rating:7.0f}  {r.take_id}   {r.wins}-{r.losses}-{r.draws}")
     for label, key in (("by model", "model"), ("by staging", "staging")):
-        grouped = group_ratings(rated, key)
-        if grouped:
+        if grouped := group_ratings(rated, key):
             print(f"\n  \033[1m{label}\033[0m")
-            for name, value in grouped.items():
-                print(f"    {value:7.0f}  {name}")
+            for gk, gv in grouped.items():
+                print(f"    {gv:7.0f}  {gk}")
     print()
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="tailorswif", description="Deadpan Test - phase 0"
+        prog="tailorswif", description="Controlled surrealism - phase 0"
     )
     parser.add_argument("--ledger", default=DEFAULT_LEDGER)
     parser.add_argument("--root", default=DEFAULT_ROOT)
+    parser.add_argument(
+        "--mode", default="sequence", choices=("sequence", "grid"),
+        help="sequence: 12 shots that cut together (default). "
+             "grid: the same shot across models x staging.",
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("plan", help="print the matrix and its cost, spend nothing")
+    plan = sub.add_parser("plan", help="print the shot list and cost, spend nothing")
+    plan.add_argument("-v", "--verbose", action="store_true", help="show full prompts")
 
-    run = sub.add_parser("run", help="render the matrix")
+    run = sub.add_parser("run", help="render")
     run.add_argument("--provider", default="dryrun", choices=("dryrun", "fal"))
-    run.add_argument("--budget", type=float, default=60.0, help="USD ceiling")
+    run.add_argument("--budget", type=float, default=25.0, help="USD ceiling")
+
+    asm = sub.add_parser("assemble", help="cut the sequence together")
+    asm.add_argument("--model", default=seq.SEQUENCE_MODEL)
+    asm.add_argument("--out", default=None)
+    asm.add_argument("--audio", default=None, help="optional music track")
+    asm.add_argument("--no-grade", action="store_true",
+                     help="skip the matching grade (to see how much it does)")
 
     rank = sub.add_parser("rank", help="open the pairwise ranking UI")
     rank.add_argument("--criterion", default="overall", choices=tuple(CRITERIA))
@@ -175,7 +264,8 @@ def main() -> int:
 
     args = parser.parse_args()
     handler = {
-        "plan": cmd_plan, "run": cmd_run, "rank": cmd_rank, "results": cmd_results
+        "plan": cmd_plan, "run": cmd_run, "assemble": cmd_assemble,
+        "rank": cmd_rank, "results": cmd_results,
     }[args.cmd]
     try:
         return handler(args)

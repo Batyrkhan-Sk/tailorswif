@@ -109,12 +109,21 @@ class ShotSpec(BaseModel):
     duration_s: float = Field(default=6.0, ge=2.0, le=30.0)
 
     environment: str = Field(min_length=20, description="Specific, not 'a cool city'.")
-    anomaly: str = Field(min_length=6)
+    anomaly: str | None = Field(
+        default=None,
+        description="None for an establishing or recovery shot where the world "
+        "is still behaving. A sequence needs those or the escalation has "
+        "nothing to escalate from.",
+    )
     rule_id: str
     invariant_shown: str = Field(
         description="Which invariant is visibly holding in this frame."
     )
     staging: Staging
+    order: int = Field(default=0, description="Position in the cut.")
+    stage: int = Field(
+        default=0, ge=0, le=5, description="Position on the escalation ladder."
+    )
 
     lens_mm: int = Field(default=35, ge=14, le=200)
     handles_s: float = Field(
@@ -134,17 +143,19 @@ class ShotSpec(BaseModel):
         does not use the word 'surreal' - both push models toward the dreamlike
         register we are trying to avoid.
         """
-        return " ".join(
-            [
-                f"{self.environment.rstrip('. ')}.",
-                f"{self.lens_mm}mm lens.",
-                self.staging.prompt_fragment(),
-                f"In the frame: {self.anomaly}.",
-                f"{self.invariant_shown}.",
-                "Naturalistic available light, restrained colour, "
-                "no visual effects, no glow, photographic.",
-            ]
+        parts = [
+            f"{self.environment.rstrip('. ')}.",
+            f"{self.lens_mm}mm lens.",
+            self.staging.prompt_fragment(),
+        ]
+        if self.anomaly:
+            parts.append(f"In the frame: {self.anomaly.rstrip('. ')}.")
+        parts.append(f"{self.invariant_shown.rstrip('. ')}.")
+        parts.append(
+            "Naturalistic available light, restrained colour, "
+            "no visual effects, no glow, photographic."
         )
+        return " ".join(parts)
 
     def fingerprint(self) -> str:
         return hashlib.sha256(self.prompt().encode()).hexdigest()[:12]

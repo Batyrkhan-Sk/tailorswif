@@ -1,58 +1,87 @@
 # tailorswif — phase 0
 
-The **Deadpan Test**: the smallest experiment that answers whether the target
-register is reachable with current models, plus the ranking tool that turns your
-judgement into data.
+Builds **one 50-second sequence**: twelve shots, one street, one escalating
+rule. Costs **$9.86**. Ends with a video you can send someone.
 
-This does not generate music videos. That is deliberate. The riskiest unknown is
-not the pipeline — it is whether any current model can produce *one shot* that
-would survive in a video of this class. Answer that for $10 before building
-anything.
+This does not generate full music videos. That is deliberate. The riskiest
+unknown is not the pipeline — it is whether the register is reachable at all
+with current models, and whether twelve separately generated shots hold together
+as one place. Find that out for $10 before building anything.
 
-## What it does
+## The sequence
 
-One surreal beat — a parked car resting a metre above its space, on an ordinary
-overcast street — rendered across **3 models × 4 staging strategies**. Then you
-rank all 66 pairs by hand.
+One rule: *objects heavier than a car have stopped being held down.* It arrives
+in five stages across the cut.
 
-The four strategies vary two factors the architecture review argues are the real
-levers on deadpan:
+| stage | shots | what you see |
+|---|---|---|
+| 0 | 1–3, 12 | the street behaving normally |
+| 1 | 4–5 | one car sits slightly too high, easy to miss |
+| 2 | 6–7 | it is unmistakable, and nobody reacts |
+| 3 | 8–10 | it is everywhere |
+| 4 | 11 | the rule has taken the street |
+
+Every shot inherits the same written location, and at least one *invariant*
+stays visible throughout — litter lying flat, people walking at an ordinary
+pace, the light unchanged. That is what makes the strangeness read as designed
+rather than random.
+
+Staging varies across the twelve shots (roughly three per strategy), so the run
+still tells you which blocking works:
 
 | | anomaly foregrounded | anomaly in background |
 |---|---|---|
 | **faces visible** | `faces_primary` | `faces_suppressed` |
 | **no faces** | `backs_primary` | `backs_suppressed` |
 
-Hypothesis: `backs_suppressed` wins and `faces_primary` looks like every other
-AI video. Being wrong about that cheaply is the point.
+Hypothesis: `backs_suppressed` reads best and `faces_primary` looks like every
+other AI video. Being wrong about that cheaply is the point.
+
+Three shots are also rendered on Kling and Veo as **probes**, so you still get a
+model comparison out of a run whose main job is producing a cut.
 
 ## Run it
 
 ```bash
-uv run tailorswif plan            # print the matrix and its cost, spend nothing
-uv run tailorswif run             # dry run — writes prompt sidecars, costs $0
-uv run tailorswif rank            # ranking UI at :8765 — keys 1 / 2 / 3 / s
-uv run tailorswif results         # Elo, plus averages by model and by staging
+uv run tailorswif plan             # shot list and cost, spends nothing
+uv run tailorswif plan -v          # ... with the full prompts
+uv run tailorswif run              # dry run — prompt sidecars, $0
+uv run tailorswif assemble         # cut it together
+uv run tailorswif rank             # ranking UI at :8765 — keys 1 / 2 / 3 / s
+uv run tailorswif results          # Elo, plus averages by model and staging
 ```
 
 To render for real you need a [fal.ai](https://fal.ai) key — pay-as-you-go, no
-subscription, and it is what a real pipeline would be built against:
+subscription, and what a real pipeline would be built against. Stay on the free
+tier and buy $25 of one-time credits; the Agent subscriptions do not discount
+API calls.
 
 ```bash
 export FAL_KEY=...
 uv run tailorswif run --provider fal --budget 15
+uv run tailorswif assemble --audio some-track.mp3
 ```
 
-**Cost: $9.98** for all twelve takes at 8s (6s + 1s handles each end).
+Add `--mode grid` to any command to run the original variant instead: the same
+single shot across 3 models × 4 stagings, cleaner as an experiment, no artifact.
+
+## What assembly does
+
+Two things, and the second matters more than it sounds. It **trims the handles**
+— half a second off each end, where generated clips are least stable — and it
+**grades everything to match**. Twelve separately generated clips come back with
+different colour and contrast, and that inconsistency is the loudest signal that
+a video was assembled rather than shot. Run `--no-grade` once to see how much
+work it is doing.
 
 ## What comes out
 
-Three answers and a dataset:
-
-1. **Which model** can hold a restrained, photographic register at all
-2. **Whether deadpan is reachable** through blocking, or collapses either way
-3. **What a frame in this register looks like** when you get one
-4. **66 preference labels** — the seed of the only asset here that compounds
+1. **A ~50 second video** you can put in front of someone
+2. **Whether the shots hold together** as one place — the thing a single-shot
+   test cannot tell you
+3. **Which model** holds a restrained, photographic register
+4. **Whether deadpan is reachable** through blocking
+5. **Preference labels** — the seed of the only asset here that compounds
 
 Ranking is pairwise, never absolute scores. Absolute multi-dimension scores from
 a VLM are correlated and uncalibrated, and the axis that matters — *does this
@@ -66,7 +95,9 @@ src/tailorswif/
   schemas.py      RealityRule (invariants required), ShotSpec, Staging
   banned.py       negative-concept bank + dreamlike-word guard
   staging.py      the four strategies under test
-  experiment.py   the matrix
+  sequence.py     the twelve shots, the world, the escalation
+  experiment.py   the single-shot grid, and the shared reality rule
+  assemble.py     trim, normalise, grade to match, concatenate
   providers/      base (budget guard, catalog), dryrun, fal
   ledger.py       sqlite — takes, comparisons, generations-per-usable-shot
   rank.py         pairwise Elo
@@ -93,13 +124,20 @@ under **2** is the target, and the entire justification for gating early.
 Stated in advance so they are not rationalised away later:
 
 - Nothing good across all twelve → the register is not reachable with today's
-  tools. Wait a year.
+  tools. Wait, or go straight at compositing and splatting instead.
+- The cut does not read as one street → world consistency needs the lookbook and
+  reference layer before anything else gets built.
 - `faces_primary` wins → the deadpan-through-blocking thesis is wrong and the
   cinematography layer needs rethinking.
-- Everything looks like a stock video with a floating car → specificity is not
-  transferring, and the problem is the prompt layer, not the model.
+- It looks good **and** staging made no difference → a prompt is enough, and the
+  directing layer is not the differentiator. That is the result worth taking
+  most seriously.
 
 ## Not built yet, on purpose
 
-Music analysis, the creative director, the world bible, the critic, compositing,
-splatting. All of it waits on the answer to this test.
+Music analysis, the creative director, the world bible, the critic, keyframe-first
+rendering, compositing, splatting. All of it waits on the answer to this run.
+
+The splat spike is the other half of the question and is not here yet: it is the
+only capability on the roadmap that someone with a Veo subscription and a good
+prompt cannot reproduce.
