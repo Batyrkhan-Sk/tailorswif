@@ -74,6 +74,60 @@ BACKS_SUPPRESSED = Staging(
     ),
 )
 
+# --- traverse grammar -------------------------------------------------------
+# A traverse needs a protagonist in every shot, and we have no identity layer
+# yet - faces would drift into a different person by shot twelve. Seeing the
+# figure only from behind solves that for free, and it *is* the deadpan
+# register: no face means no reaction to read.
+
+FOLLOW = Staging(
+    key="follow",
+    label="Following the figure from behind",
+    emphasis=Emphasis.SECONDARY,
+    faces_visible=False,
+    camera_note=(
+        "Handheld medium-wide shot following a walking figure from directly "
+        "behind at shoulder height, deep focus, the figure kept small in frame"
+    ),
+    blocking_note=(
+        "A figure in a dark wool overcoat walks steadily away from camera, "
+        "never turning, never stopping, face never visible"
+    ),
+)
+
+THRESHOLD = Staging(
+    key="threshold",
+    label="The figure passing through a doorway",
+    emphasis=Emphasis.SECONDARY,
+    faces_visible=False,
+    camera_note=(
+        "Static wide shot square onto a doorway, deep focus, the room beyond "
+        "clearly readable through the opening"
+    ),
+    blocking_note=(
+        "A figure in a dark wool overcoat pushes through the door and walks on "
+        "without pausing, seen from behind, face never visible"
+    ),
+)
+
+# The still-life register: shoot the impossible thing exactly as you would shoot
+# an ordinary one. This is what lets a loud anomaly stay deadpan - the wow is in
+# the content, never in the camera.
+DOMESTIC = Staging(
+    key="domestic",
+    label="Ordinary coverage of an extraordinary thing",
+    emphasis=Emphasis.SECONDARY,
+    faces_visible=False,
+    camera_note=(
+        "Static close shot from slightly above, the way a cookery programme "
+        "covers a hob, unremarkable framing, no camera movement at all"
+    ),
+    blocking_note=(
+        "A pair of hands works at ordinary speed, unhurried, out of frame "
+        "above the wrist"
+    ),
+)
+
 STRATEGIES: tuple[Staging, ...] = (
     FACES_PRIMARY,
     FACES_SUPPRESSED,
@@ -81,4 +135,8 @@ STRATEGIES: tuple[Staging, ...] = (
     BACKS_SUPPRESSED,
 )
 
-BY_KEY: dict[str, Staging] = {s.key: s for s in STRATEGIES}
+TRAVERSE_STRATEGIES: tuple[Staging, ...] = (FOLLOW, THRESHOLD, DOMESTIC)
+
+BY_KEY: dict[str, Staging] = {
+    s.key: s for s in STRATEGIES + TRAVERSE_STRATEGIES
+}

@@ -124,6 +124,23 @@ class ShotSpec(BaseModel):
     stage: int = Field(
         default=0, ge=0, le=5, description="Position on the escalation ladder."
     )
+    intensity: int = Field(
+        default=1,
+        ge=0,
+        le=3,
+        description="How loud the anomaly is on its own, ignoring how it is shot. "
+        "0 nothing, 1 quiet, 2 clear, 3 loud. Crossed with staging this asks the "
+        "question that matters: can a loud anomaly survive being shot quietly, or "
+        "does it demand emphasis? If loud anomalies only work at PRIMARY, the "
+        "deadpan register has a ceiling and we need to know where it is.",
+    )
+    render_risk: int = Field(
+        default=1,
+        ge=1,
+        le=3,
+        description="Expected failure rate. 3 means human anatomy in an unusual "
+        "configuration or another known weak spot - budget extra takes.",
+    )
 
     lens_mm: int = Field(default=35, ge=14, le=200)
     handles_s: float = Field(

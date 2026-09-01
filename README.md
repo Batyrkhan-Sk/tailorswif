@@ -62,8 +62,47 @@ uv run tailorswif run --provider fal --budget 15
 uv run tailorswif assemble --audio some-track.mp3
 ```
 
-Add `--mode grid` to any command to run the original variant instead: the same
-single shot across 3 models × 4 stagings, cleaner as an experiment, no artifact.
+## Two templates, and a third mode
+
+```bash
+uv run tailorswif --mode sequence plan    # default
+uv run tailorswif --mode traverse plan
+uv run tailorswif --mode grid plan
+```
+
+**`sequence`** — one altered law, one street, escalating across twelve shots.
+Closer to a rule-world video.
+
+**`traverse`** — a figure in an overcoat walks through twelve unconnected
+spaces, each with its own unrelated wrongness. Nothing escalates; the unifying
+principle is *tone*, not a physical rule. A sheep turning in a launderette
+machine. Grenades frying in a pan like chips. A man fishing a puddle. A football
+match with no ball. This is the structure the genre actually uses, and it suits
+generation better — the signature move is a door opening onto somewhere it
+could not open onto, which in live action is a built set and a compositing job
+and here is just two clips cut together. **Impossible transitions are free.**
+
+It also solves character consistency for nothing: the figure is only ever seen
+from behind, so there is no face to drift — and no face means no reaction, which
+is the deadpan register anyway.
+
+**`grid`** — the same single shot across 3 models × 4 stagings. Cleaner as an
+experiment, produces nothing you can show.
+
+### The question the traverse asks
+
+Its anomalies span intensity 0–3, from a man carrying a door to grenades in a
+frying pan, and none of them is shot with emphasis. So it tests something
+sharper than the grid did: **can a loud anomaly survive being shot quietly, or
+does it demand emphasis?** If the loud ones only work when the camera points at
+them, the deadpan register has a ceiling and you want to know where it is.
+
+One rule holds the whole thing together: **the wow goes in the content, never in
+the camera.** Shoot a grenade fry-up exactly like an ordinary breakfast. The
+moment the camera pushes in on it, you have made a generic AI video.
+
+Shot 7 is flagged high-risk — human anatomy in an unusual configuration is
+exactly where models produce limb garbage. Budget extra takes for it.
 
 ## What assembly does
 

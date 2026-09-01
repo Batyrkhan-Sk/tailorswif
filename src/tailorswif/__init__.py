@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from . import sequence as seq
+from . import traverse as trv
 from .assemble import build
 from .banned import ConceptRejected
 from .experiment import EXPERIMENT_NAME, matrix, pair_count
@@ -40,17 +41,25 @@ def _provider(name: str):
     raise SystemExit(f"unknown provider: {name}")
 
 
+# sequence and traverse expose the same surface, so the CLI treats them
+# interchangeably. grid is the odd one out: same shot, many treatments, no cut.
+CUTS = {
+    "sequence": (seq, seq.SEQUENCE_NAME, seq.SEQUENCE_MODEL),
+    "traverse": (trv, trv.TRAVERSE_NAME, trv.TRAVERSE_MODEL),
+}
+
+
 def _jobs(mode: str) -> list[tuple[str, object]]:
-    return seq.plan() if mode == "sequence" else matrix()
+    return CUTS[mode][0].plan() if mode in CUTS else matrix()
 
 
 def _run_name(mode: str) -> str:
-    return seq.SEQUENCE_NAME if mode == "sequence" else EXPERIMENT_NAME
+    return CUTS[mode][1] if mode in CUTS else EXPERIMENT_NAME
 
 
 def _take_id(mode: str, model: str, shot) -> str:
-    if mode == "sequence":
-        return f"{seq.SEQUENCE_NAME}.{model}.{shot.order:02d}"
+    if mode in CUTS:
+        return f"{_run_name(mode)}.{model}.{shot.order:02d}"
     return f"{EXPERIMENT_NAME}.{model}.{shot.staging.key}"
 
 
@@ -64,17 +73,20 @@ def cmd_plan(args: argparse.Namespace) -> int:
         CATALOG[m].price(s.render_duration_s) for m, s in jobs
     )
 
-    if args.mode == "sequence":
-        print(f"\n\033[1m{seq.SEQUENCE_NAME}\033[0m  "
-              f"{len(seq.SHOTS)} shots, {seq.runtime_s():.0f}s cut\n")
-        for shot in seq.SHOTS:
-            probe = " +probe" if shot.order in seq.PROBE_ORDERS else ""
-            print(f"  {shot.order:02d}  stage {shot.stage}  "
-                  f"{shot.duration_s:>4.1f}s  {shot.staging.key:<18}{probe}")
+    if args.mode in CUTS:
+        mod, name, _ = CUTS[args.mode]
+        print(f"\n\033[1m{name}\033[0m  "
+              f"{len(mod.SHOTS)} shots, {mod.runtime_s():.0f}s cut\n")
+        for shot in mod.SHOTS:
+            flags = " +probe" if shot.order in mod.PROBE_ORDERS else ""
+            if shot.render_risk >= 3:
+                flags += " \033[33m!risky\033[0m"
+            print(f"  {shot.order:02d}  int {shot.intensity}  "
+                  f"{shot.duration_s:>4.1f}s  {shot.staging.key:<18}{flags}")
             print(f"      {shot.anomaly or '(no anomaly - the world behaving)'}")
         if args.verbose:
             print("\n  --- prompts ---")
-            for shot in seq.SHOTS:
+            for shot in mod.SHOTS:
                 print(f"\n  [{shot.order:02d}] {shot.prompt()}")
     else:
         for model, shot in jobs:
@@ -84,9 +96,14 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     n = len(jobs)
     print(f"\n{n} renders, ${total:.2f} to run.")
-    if args.mode == "sequence":
-        print(f"{len(seq.PROBE_ORDERS) * len(seq.PROBE_MODELS)} of those are "
-              f"probes on {', '.join(seq.PROBE_MODELS)} for the model comparison.")
+    if args.mode in CUTS:
+        mod = CUTS[args.mode][0]
+        print(f"{len(mod.PROBE_ORDERS) * len(mod.PROBE_MODELS)} of those are "
+              f"probes on {', '.join(mod.PROBE_MODELS)} for the model comparison.")
+        risky = [s.order for s in mod.SHOTS if s.render_risk >= 3]
+        if risky:
+            print(f"shot {', '.join(str(o) for o in risky)} is high-risk to "
+                  f"render - budget extra takes for it.")
     return 0
 
 
@@ -144,8 +161,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     print(f"\n{ok} ok, {failed} failed, ${budget.spent_usd:.2f} of "
           f"${budget.ceiling_usd:.2f}")
-    if ok and args.mode == "sequence":
-        print("next: uv run tailorswif assemble")
+    if ok and args.mode in CUTS:
+        print(f"next: uv run tailorswif --mode {args.mode} assemble")
     elif ok:
         print(f"next: uv run tailorswif rank   ({pair_count(ok)} comparisons)")
     return 0
@@ -153,21 +170,27 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_assemble(args: argparse.Namespace) -> int:
     """Cut the sequence: trim handles, normalise, grade to match, concatenate."""
-    root = Path(args.root) / seq.SEQUENCE_NAME
+    if args.mode not in CUTS:
+        print("assemble needs --mode sequence or --mode traverse "
+              "(the grid is the same shot many ways, it does not cut together)",
+              file=sys.stderr)
+        return 2
+    mod, name, default_model = CUTS[args.mode]
+    model = args.model or default_model
+    root = Path(args.root) / name
     clips = [
-        (root / f"{seq.SEQUENCE_NAME}.{args.model}.{shot.order:02d}.mp4",
-         shot.duration_s)
-        for shot in seq.SHOTS
+        (root / f"{name}.{model}.{shot.order:02d}.mp4", shot.duration_s)
+        for shot in mod.SHOTS
     ]
     missing = [p.name for p, _ in clips if not p.exists()]
     if missing:
         print(f"missing {len(missing)} of {len(clips)} clips:", file=sys.stderr)
-        for name in missing[:5]:
-            print(f"  {name}", file=sys.stderr)
+        for missing_name in missing[:5]:
+            print(f"  {missing_name}", file=sys.stderr)
         if len(missing) > 5:
             print(f"  ... and {len(missing) - 5} more", file=sys.stderr)
 
-    out = Path(args.out or (Path(args.root) / f"{seq.SEQUENCE_NAME}.mp4"))
+    out = Path(args.out or (Path(args.root) / f"{name}.mp4"))
     try:
         built = build(
             clips, out,
@@ -181,7 +204,7 @@ def cmd_assemble(args: argparse.Namespace) -> int:
 
     size_mb = built.stat().st_size / 1e6
     print(f"\n{built}  ({size_mb:.1f} MB)")
-    print("open it, then: uv run tailorswif rank")
+    print(f"open it, then: uv run tailorswif --mode {args.mode} rank")
     return 0
 
 
@@ -235,9 +258,10 @@ def main() -> int:
     parser.add_argument("--ledger", default=DEFAULT_LEDGER)
     parser.add_argument("--root", default=DEFAULT_ROOT)
     parser.add_argument(
-        "--mode", default="sequence", choices=("sequence", "grid"),
-        help="sequence: 12 shots that cut together (default). "
-             "grid: the same shot across models x staging.",
+        "--mode", default="sequence", choices=("sequence", "traverse", "grid"),
+        help="sequence: one altered law, one street, escalating (default). "
+             "traverse: one figure through twelve spaces, tonal not ruled. "
+             "grid: the same shot across models x staging, no cut.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -249,7 +273,7 @@ def main() -> int:
     run.add_argument("--budget", type=float, default=25.0, help="USD ceiling")
 
     asm = sub.add_parser("assemble", help="cut the sequence together")
-    asm.add_argument("--model", default=seq.SEQUENCE_MODEL)
+    asm.add_argument("--model", default=None)
     asm.add_argument("--out", default=None)
     asm.add_argument("--audio", default=None, help="optional music track")
     asm.add_argument("--no-grade", action="store_true",
