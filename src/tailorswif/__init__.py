@@ -122,6 +122,17 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"no shots matching {sorted(wanted)}", file=sys.stderr)
             return 2
 
+    if args.model:
+        if args.model not in CATALOG:
+            print(f"unknown model {args.model}; have: {', '.join(CATALOG)}",
+                  file=sys.stderr)
+            return 2
+        seen = set()
+        jobs = [
+            (args.model, s) for m, s in jobs
+            if not (s.order in seen or seen.add(s.order))
+        ]
+
     ok = failed = 0
     for model, shot in jobs:
         spec = CATALOG[model]
@@ -288,6 +299,11 @@ def main() -> int:
     run = sub.add_parser("run", help="render")
     run.add_argument("--provider", default="dryrun", choices=("dryrun", "fal"))
     run.add_argument("--budget", type=float, default=25.0, help="USD ceiling")
+    run.add_argument(
+        "--model", default=None,
+        help="override the model for this run, e.g. veo-3.1 (the standard tier, "
+             "twice the rate of veo-3.1-fast and a different picture)",
+    )
     run.add_argument(
         "--only", type=int, nargs="+", metavar="N",
         help="render only these shot numbers. Use it to smoke-test one cheap "

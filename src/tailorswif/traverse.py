@@ -46,14 +46,15 @@ TRAVERSE_NAME = "overcoat-01"
 
 # Tone, not plot. This is what the twelve spaces have in common.
 REGISTER = (
-    "Overcast daylight or plain fluorescent interior light, worn municipal "
-    "surfaces, muted colour"
+    "Low winter sun raking in through windows at a steep angle, strong "
+    "directional light and deep shadow, worn municipal surfaces catching "
+    "specular highlight, a restrained palette with one warm accent"
 )
 
 # Invariants, phrased for the frame. At least one holds in every shot.
 NOBODY_LOOKS = "Nobody present pays the slightest attention"
 ORDINARY_PACE = "Everyone moves at an ordinary unhurried pace"
-NORMAL_LIGHT = "The light is flat and ordinary, shadows soft and consistent"
+NORMAL_LIGHT = "The light is ordinary for the place and time, shadows falling consistently from one direction"
 
 
 def _shot(

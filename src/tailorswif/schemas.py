@@ -159,6 +159,14 @@ class ShotSpec(BaseModel):
         Deliberately does not name any director, artist or existing work, and
         does not use the word 'surreal' - both push models toward the dreamlike
         register we are trying to avoid.
+
+        The lighting clause is not decoration. An earlier version asked for
+        "naturalistic available light, restrained colour" and got exactly that:
+        footage that looks like a phone video. Deadpan is a property of
+        performance and camera *behaviour* - nobody reacts, the camera does not
+        chase the gag. It has nothing to do with being unlit. Restraint of
+        content is not restraint of craft, and conflating them produces cheap
+        pictures of interesting things.
         """
         parts = [
             f"{self.environment.rstrip('. ')}.",
@@ -169,8 +177,9 @@ class ShotSpec(BaseModel):
             parts.append(f"In the frame: {self.anomaly.rstrip('. ')}.")
         parts.append(f"{self.invariant_shown.rstrip('. ')}.")
         parts.append(
-            "Naturalistic available light, restrained colour, "
-            "no visual effects, no glow, photographic."
+            "One dominant light source with a clear direction, defined shadow "
+            "falloff, deep shadows that still hold detail, specular highlights "
+            "on worn surfaces, shot on 35mm film with fine grain."
         )
         return " ".join(parts)
 

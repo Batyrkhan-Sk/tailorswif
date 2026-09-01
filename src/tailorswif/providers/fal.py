@@ -32,14 +32,16 @@ def build_payload(
     prompt: str,
     duration_s: float,
     start_image: str | None = None,
+    resolution: str = "1080p",
 ) -> dict[str, object]:
     """Per-family request body. These endpoints agree on almost nothing.
 
-    Every take renders at 720p so that resolution differences cannot bias the
-    ranking, and with audio off wherever the field exists - we have a song, and
-    audio roughly doubles the rate on several models.
+    Renders at 1080p by default. An earlier version pinned 720p so resolution
+    could not bias a ranking, which was correct for the comparison and wrong for
+    everything else - 720p reads as cheap on any modern screen, and that alone
+    can sink a shot. Audio is off wherever the field exists: we have a song.
     """
-    payload: dict[str, object] = {"prompt": prompt, "resolution": "720p"}
+    payload: dict[str, object] = {"prompt": prompt, "resolution": resolution}
 
     if spec.accepts_duration:
         payload["duration"] = int(round(min(duration_s, spec.max_duration_s)))
@@ -49,10 +51,13 @@ def build_payload(
         # That would silently undo the staging language the whole experiment
         # is testing, so it is off.
         payload["enable_prompt_expansion"] = False
+        # Bans the dreamlike register, not the craft. An earlier version also
+        # banned "dramatic lighting" and "cinematic colour grade", which threw
+        # out the lighting along with the slop and produced flat, cheap footage.
         payload["negative_prompt"] = (
-            "glowing, glow, lens flare, neon, saturated colour, dreamlike, "
-            "ethereal, particles, sparks, smoke effects, slow motion, "
-            "dramatic lighting, cinematic colour grade"
+            "glowing, glow, lens flare, neon, oversaturated, dreamlike, "
+            "ethereal, particles, sparks, magic, slow motion, "
+            "teal and orange grade, plastic skin, smooth CGI"
         )
     elif spec.family == "kling":
         payload["generate_audio"] = False
@@ -91,8 +96,11 @@ class FalProvider:
         duration_s: float,
         out_path: str,
         start_image: str | None = None,
+        resolution: str = "1080p",
     ) -> float:
-        payload = build_payload(spec, prompt, duration_s, start_image)
+        payload = build_payload(
+            spec, prompt, duration_s, start_image, resolution=resolution
+        )
 
         with httpx.Client(timeout=60.0) as client:
             submit = client.post(
