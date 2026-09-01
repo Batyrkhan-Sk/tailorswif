@@ -57,6 +57,30 @@ def probe_duration(path: Path) -> float | None:
         return None
 
 
+def _xfade_chain(
+    usable: list[tuple[Path, float]], xfade_s: float
+) -> list[str]:
+    """Fold the clips together with crossfades.
+
+    Each xfade eats `xfade_s` of overlap, so every offset is computed against
+    the running length of what has already been folded, not against the raw
+    clip durations.
+    """
+    steps: list[str] = []
+    prev = "v0"
+    running = usable[0][1]
+    for i in range(1, len(usable)):
+        offset = max(0.0, running - xfade_s)
+        out = "out" if i == len(usable) - 1 else f"x{i}"
+        steps.append(
+            f"[{prev}][v{i}]xfade=transition=fade:"
+            f"duration={xfade_s:.2f}:offset={offset:.2f}[{out}]"
+        )
+        running = running + usable[i][1] - xfade_s
+        prev = out
+    return steps
+
+
 def build(
     clips: list[tuple[Path, float]],
     out_path: Path,
@@ -64,11 +88,18 @@ def build(
     handles_s: float = 0.5,
     grade: bool = True,
     audio: Path | None = None,
+    transition: str = "cut",
+    xfade_s: float = 0.5,
 ) -> Path:
     """Trim handles off each clip, normalise, grade, concatenate.
 
     `clips` is (path, intended_duration) in cut order. Filters run in one graph
     rather than as intermediate files so nothing is re-encoded twice.
+
+    `transition` is "cut" or "dissolve". A threshold transition - a door opening
+    onto somewhere it could not open onto - wants a hard cut: the dissolve
+    announces the trick and softens exactly the abruptness the joke depends on.
+    Dissolve is here to be compared against, not because it is right.
     """
     ffmpeg = _require_ffmpeg()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,8 +129,11 @@ def build(
             chain += f",{GRADE}"
         chains.append(f"{chain}[v{i}]")
 
-    concat = "".join(f"[v{i}]" for i in range(len(usable)))
-    graph = ";".join(chains) + f";{concat}concat=n={len(usable)}:v=1:a=0[out]"
+    if transition == "cut" or len(usable) == 1:
+        concat = "".join(f"[v{i}]" for i in range(len(usable)))
+        graph = ";".join(chains) + f";{concat}concat=n={len(usable)}:v=1:a=0[out]"
+    else:
+        graph = ";".join(chains + _xfade_chain(usable, xfade_s))
 
     cmd = [ffmpeg, "-y", *inputs]
     if audio and audio.exists():

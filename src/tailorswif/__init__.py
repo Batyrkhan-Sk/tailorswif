@@ -186,9 +186,16 @@ def cmd_assemble(args: argparse.Namespace) -> int:
     mod, name, default_model = CUTS[args.mode]
     model = args.model or default_model
     root = Path(args.root) / name
+    shots = mod.SHOTS
+    if args.only:
+        wanted = set(args.only)
+        shots = [s for s in shots if s.order in wanted]
+        if not shots:
+            print(f"no shots matching {sorted(wanted)}", file=sys.stderr)
+            return 2
     clips = [
         (root / f"{name}.{model}.{shot.order:02d}.mp4", shot.duration_s)
-        for shot in mod.SHOTS
+        for shot in shots
     ]
     missing = [p.name for p, _ in clips if not p.exists()]
     if missing:
@@ -205,6 +212,8 @@ def cmd_assemble(args: argparse.Namespace) -> int:
             handles_s=0.5,
             grade=not args.no_grade,
             audio=Path(args.audio) if args.audio else None,
+            transition=args.transition,
+            xfade_s=args.xfade,
         )
     except (FileNotFoundError, RuntimeError) as exc:
         print(f"assemble failed: {exc}", file=sys.stderr)
@@ -292,6 +301,14 @@ def main() -> int:
     asm.add_argument("--audio", default=None, help="optional music track")
     asm.add_argument("--no-grade", action="store_true",
                      help="skip the matching grade (to see how much it does)")
+    asm.add_argument("--only", type=int, nargs="+", metavar="N",
+                     help="cut only these shots - use it to look at one "
+                          "transition on its own")
+    asm.add_argument("--transition", default="cut", choices=("cut", "dissolve"),
+                     help="cut is right for a threshold transition; dissolve "
+                          "is here to compare against")
+    asm.add_argument("--xfade", type=float, default=0.5,
+                     help="dissolve length in seconds")
 
     rank = sub.add_parser("rank", help="open the pairwise ranking UI")
     rank.add_argument("--criterion", default="overall", choices=tuple(CRITERIA))
