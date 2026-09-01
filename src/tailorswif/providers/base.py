@@ -22,10 +22,14 @@ class BudgetExceeded(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class ModelSpec:
-    """What a model costs and what conditioning it accepts.
+    """What a model costs, what it accepts, and how to talk to it.
 
-    Rates are USD per second of generated video, audio off, verified Aug 2026.
+    Rates are USD per second of generated video, audio off, verified Sep 2026.
     Re-check before committing to a provider - this category reprices monthly.
+
+    `family` selects the payload shape: these endpoints disagree about almost
+    every field name, and one of them silently rewrites your prompt unless told
+    not to. See `providers/fal.py`.
     """
 
     key: str
@@ -33,6 +37,8 @@ class ModelSpec:
     model_id: str
     usd_per_second: float
     max_duration_s: float
+    family: str = "generic"
+    accepts_duration: bool = True
     accepts_start_image: bool = False
     accepts_end_image: bool = False
     accepts_image_refs: bool = False
@@ -41,32 +47,29 @@ class ModelSpec:
         return round(self.usd_per_second * duration_s, 4)
 
 
-# Rates audio-off. Veo has the best camera language and the weakest
-# conditioning, so it is a hero-shot model, not a continuity model.
+# Endpoint ids verified against fal model pages, Sep 2026. Getting one of these
+# wrong costs a failed run and a confusing afternoon, so they are checked rather
+# than guessed. Veo has the best camera language and the weakest conditioning -
+# a hero-shot model, not a continuity model - and does not expose duration at
+# all, capping at 8s per call.
 CATALOG: dict[str, ModelSpec] = {
     "wan-2.7": ModelSpec(
-        "wan-2.7", "fal", "fal-ai/wan-2.7", 0.10, 15,
+        "wan-2.7", "fal", "fal-ai/wan/v2.7/text-to-video", 0.10, 15,
+        family="wan",
         accepts_start_image=True, accepts_end_image=True, accepts_image_refs=True,
     ),
     "kling-3.0": ModelSpec(
-        "kling-3.0", "fal", "fal-ai/kling-video/v3/standard", 0.112, 15,
+        "kling-3.0", "fal", "fal-ai/kling-video/v3/standard/text-to-video", 0.112, 15,
+        family="kling",
         accepts_start_image=True, accepts_end_image=True, accepts_image_refs=True,
-    ),
-    "ltx-2.5": ModelSpec(
-        "ltx-2.5", "fal", "fal-ai/ltx-2.5", 0.09, 20,
-        accepts_start_image=True, accepts_end_image=True,
     ),
     "veo-3.1-fast": ModelSpec(
         "veo-3.1-fast", "fal", "fal-ai/veo3.1/fast", 0.10, 8,
-        accepts_start_image=True,
+        family="veo", accepts_duration=False, accepts_start_image=True,
     ),
     "veo-3.1": ModelSpec(
         "veo-3.1", "fal", "fal-ai/veo3.1", 0.20, 8,
-        accepts_start_image=True,
-    ),
-    "seedance-2.5": ModelSpec(
-        "seedance-2.5", "fal", "fal-ai/bytedance/seedance-2.5", 0.4730, 30,
-        accepts_start_image=True, accepts_end_image=True, accepts_image_refs=True,
+        family="veo", accepts_duration=False, accepts_start_image=True,
     ),
 }
 
