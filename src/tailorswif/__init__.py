@@ -114,8 +114,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     name = _run_name(args.mode)
     root = Path(args.root) / name
 
+    jobs = _jobs(args.mode)
+    if args.only:
+        wanted = set(args.only)
+        jobs = [(m, s) for m, s in jobs if getattr(s, "order", None) in wanted]
+        if not jobs:
+            print(f"no shots matching {sorted(wanted)}", file=sys.stderr)
+            return 2
+
     ok = failed = 0
-    for model, shot in _jobs(args.mode):
+    for model, shot in jobs:
         spec = CATALOG[model]
         take_id = _take_id(args.mode, model, shot)
         out = root / f"{take_id}.mp4"
@@ -271,6 +279,12 @@ def main() -> int:
     run = sub.add_parser("run", help="render")
     run.add_argument("--provider", default="dryrun", choices=("dryrun", "fal"))
     run.add_argument("--budget", type=float, default=25.0, help="USD ceiling")
+    run.add_argument(
+        "--only", type=int, nargs="+", metavar="N",
+        help="render only these shot numbers. Use it to smoke-test one cheap "
+             "shot before committing to the whole run - a wrong endpoint or "
+             "payload then costs cents instead of eighteen failures.",
+    )
 
     asm = sub.add_parser("assemble", help="cut the sequence together")
     asm.add_argument("--model", default=None)
