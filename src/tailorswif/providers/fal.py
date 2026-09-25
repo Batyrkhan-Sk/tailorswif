@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 
-from .base import ModelSpec
+from .base import MAX_RESOLUTION, RESOLUTION_ORDER, ModelSpec
 
 QUEUE_ROOT = "https://queue.fal.run"
 POLL_INTERVAL_S = 3.0
@@ -27,12 +27,28 @@ class FalError(RuntimeError):
     pass
 
 
+def clamp_resolution(family: str, resolution: str) -> str:
+    """Lower a request to the highest tier this family actually accepts.
+
+    Seedance tops out at 720p while the default here is 1080p, and the endpoint
+    answers an out-of-range value with a 422 rather than rounding down. Clamping
+    keeps a run alive instead of failing every shot identically.
+    """
+    ceiling = MAX_RESOLUTION.get(family)
+    if not ceiling or resolution not in RESOLUTION_ORDER:
+        return resolution
+    if RESOLUTION_ORDER.index(resolution) <= RESOLUTION_ORDER.index(ceiling):
+        return resolution
+    return ceiling
+
+
 def build_payload(
     spec: ModelSpec,
     prompt: str,
     duration_s: float,
     start_image: str | None = None,
     resolution: str = "1080p",
+    end_image: str | None = None,
 ) -> dict[str, object]:
     """Per-family request body. These endpoints agree on almost nothing.
 
@@ -41,6 +57,7 @@ def build_payload(
     everything else - 720p reads as cheap on any modern screen, and that alone
     can sink a shot. Audio is off wherever the field exists: we have a song.
     """
+    resolution = clamp_resolution(spec.family, resolution)
     payload: dict[str, object] = {"prompt": prompt, "resolution": resolution}
 
     if spec.accepts_duration:
@@ -64,10 +81,21 @@ def build_payload(
     elif spec.family == "veo":
         # Veo names the field `audio` and exposes no duration - 8s per call.
         payload["audio"] = False
+    elif spec.family == "seedance":
+        # Seedance generates audio by default, and it is the only model here
+        # that does. Twenty independently generated soundtracks do not cut
+        # together, and the rate is per token of output either way.
+        payload["generate_audio"] = False
+        payload["duration"] = str(payload["duration"])  # this one wants a string
+        payload["aspect_ratio"] = "16:9"
 
     if start_image and spec.accepts_start_image:
         key = "start_image_url" if spec.family == "kling" else "image_url"
         payload[key] = start_image
+
+    if end_image and spec.accepts_end_image:
+        key = "tail_image_url" if spec.family == "kling" else "end_image_url"
+        payload[key] = end_image
 
     return payload
 
@@ -88,6 +116,17 @@ class FalProvider:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Key {self.api_key}"}
 
+    def upload(self, path: str) -> str:
+        """Put a local file in fal storage and return its URL.
+
+        Used to feed a frame lifted out of one clip back in as the start image
+        of the next, which is how continuity is actually held across shots.
+        """
+        import fal_client
+
+        os.environ.setdefault("FAL_KEY", self.api_key or "")
+        return str(fal_client.upload_file(path))
+
     def generate(
         self,
         *,
@@ -96,10 +135,12 @@ class FalProvider:
         duration_s: float,
         out_path: str,
         start_image: str | None = None,
+        end_image: str | None = None,
         resolution: str = "1080p",
     ) -> float:
         payload = build_payload(
-            spec, prompt, duration_s, start_image, resolution=resolution
+            spec, prompt, duration_s, start_image,
+            resolution=resolution, end_image=end_image,
         )
 
         with httpx.Client(timeout=60.0) as client:

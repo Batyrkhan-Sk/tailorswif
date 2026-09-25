@@ -71,7 +71,63 @@ CATALOG: dict[str, ModelSpec] = {
         "veo-3.1", "fal", "fal-ai/veo3.1", 0.20, 8,
         family="veo", accepts_duration=False, accepts_start_image=True,
     ),
+    # Seedance is the odd one in this catalog, and the endpoint id is the first
+    # reason to be careful: no `fal-ai/` prefix, unlike everything above.
+    #
+    # The second is pricing. It bills per token of *output* - roughly
+    # (h * w * fps * seconds) / 1024 at $0.0214 per thousand - so the per-second
+    # rate is a function of resolution, and the spread is nearly 5x end to end.
+    # A ModelSpec carries one rate, so each tier is its own entry. Verified
+    # against the endpoint's own validation error, Sep 2026: it accepts exactly
+    # '480p', '720p' and '1080p'. There is no 4K here - that is a separate
+    # seedance-2.0-4k model, and on ByteDance's own platform 4K is an upscale
+    # delivery mode rather than native generation.
+    #
+    # What it buys is length and conditioning volume: 30s in a single pass
+    # against 15s for wan and kling and 8s for veo, and up to 50 multimodal
+    # references. Not the end frame - wan and kling take one of those too.
+    "seedance-2.5": ModelSpec(
+        "seedance-2.5", "fal", "bytedance/seedance-2.5/image-to-video", 1.040, 30,
+        family="seedance",
+        accepts_start_image=True, accepts_end_image=True, accepts_image_refs=True,
+    ),
+    "seedance-2.5-720": ModelSpec(
+        "seedance-2.5-720", "fal", "bytedance/seedance-2.5/image-to-video", 0.473, 30,
+        family="seedance",
+        accepts_start_image=True, accepts_end_image=True, accepts_image_refs=True,
+    ),
+    "seedance-2.5-480": ModelSpec(
+        "seedance-2.5-480", "fal", "bytedance/seedance-2.5/image-to-video", 0.2205, 30,
+        family="seedance",
+        accepts_start_image=True, accepts_end_image=True, accepts_image_refs=True,
+    ),
+    # Text-to-video, for the one shot in a chain that has no plate to start from.
+    "seedance-2.5-t2v": ModelSpec(
+        "seedance-2.5-t2v", "fal", "bytedance/seedance-2.5/text-to-video", 1.040, 30,
+        family="seedance",
+    ),
+    "seedance-2.5-t2v-480": ModelSpec(
+        "seedance-2.5-t2v-480", "fal", "bytedance/seedance-2.5/text-to-video", 0.2205, 30,
+        family="seedance",
+    ),
 }
+
+# The resolution each catalog entry is priced for. A tier and its rate have to
+# travel together or the budget guard quietly lies: asking seedance-2.5-480 for
+# 1080p would bill 5x the quote it was reserved against.
+TIER_RESOLUTION: dict[str, str] = {
+    "seedance-2.5": "1080p",
+    "seedance-2.5-720": "720p",
+    "seedance-2.5-480": "480p",
+    "seedance-2.5-t2v": "1080p",
+    "seedance-2.5-t2v-480": "480p",
+}
+
+# Highest tier a family will accept at all. The default elsewhere in this
+# codebase is 1080p, so the payload builder clamps rather than letting a run die
+# identically on every shot.
+MAX_RESOLUTION: dict[str, str] = {"seedance": "1080p"}
+RESOLUTION_ORDER: tuple[str, ...] = ("480p", "720p", "1080p")
 
 
 @dataclass
@@ -117,6 +173,8 @@ class VideoProvider(Protocol):
         duration_s: float,
         out_path: str,
         start_image: str | None = None,
+        end_image: str | None = None,
+        resolution: str = "1080p",
     ) -> float:
         """Render to `out_path`. Return actual USD spent."""
         ...

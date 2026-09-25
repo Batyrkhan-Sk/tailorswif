@@ -128,6 +128,44 @@ DOMESTIC = Staging(
     ),
 )
 
+# --- point-of-view grammar --------------------------------------------------
+# The strobe cut inverts the deadpan hypothesis rather than testing it. There,
+# faces were suppressed so no reaction could be read; here the faces *are* the
+# anomaly and must be legible - but only for the fraction of a second a strobe
+# gives them. Intermittent legibility, not absence, is what does the work, and
+# it buys the same protection for free: the model's weakest frames are the ones
+# nobody can see.
+
+POV_CROWD = Staging(
+    key="pov_crowd",
+    label="First-person, moving through the crowd",
+    emphasis=Emphasis.SECONDARY,
+    faces_visible=True,
+    camera_note=(
+        "First-person point of view, the camera is the character's eyes at "
+        "1.7m, handheld micro-motion and realistic inertia, natural motion blur"
+    ),
+    blocking_note=(
+        "Dancers press close on all sides and pass across the lens, the crowd "
+        "dense enough that the room is never fully visible at once"
+    ),
+)
+
+POV_HELD = Staging(
+    key="pov_held",
+    label="First-person, holding still on one figure",
+    emphasis=Emphasis.PRIMARY,
+    faces_visible=True,
+    camera_note=(
+        "First-person point of view, the camera is the character's eyes at "
+        "1.7m, nearly still, a slight tremor, focus settling late"
+    ),
+    blocking_note=(
+        "One figure holds the centre of frame while the crowd continues around "
+        "them, the surrounding dancers unremarked and out of focus"
+    ),
+)
+
 STRATEGIES: tuple[Staging, ...] = (
     FACES_PRIMARY,
     FACES_SUPPRESSED,
@@ -136,7 +174,8 @@ STRATEGIES: tuple[Staging, ...] = (
 )
 
 TRAVERSE_STRATEGIES: tuple[Staging, ...] = (FOLLOW, THRESHOLD, DOMESTIC)
+POV_STRATEGIES: tuple[Staging, ...] = (POV_CROWD, POV_HELD)
 
 BY_KEY: dict[str, Staging] = {
-    s.key: s for s in STRATEGIES + TRAVERSE_STRATEGIES
+    s.key: s for s in STRATEGIES + TRAVERSE_STRATEGIES + POV_STRATEGIES
 }

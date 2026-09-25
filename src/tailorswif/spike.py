@@ -44,15 +44,22 @@ PHOTOGRAPHIC = (
     "hold detail, no glow, no visual effects."
 )
 
-# Anchored to the LEGO bulldozer because it gives the model a known real object
-# to judge scale against, and it must partially occlude the intervention - which
-# is the property that actually proves geometry was respected.
+# Anchored to the LEGO digger because it gives the model a known real object to
+# judge scale against, and it must partially occlude the intervention - which is
+# the property that actually proves geometry was respected rather than guessed.
+#
+# The first version described a hole in the abstract and the model painted one
+# into a table that had none, so it dissolved the moment the motion video took
+# over. This version points at the void that is *already in the plate* - carved
+# out of the splat by deleting gaussians - and only says what it should look
+# like. Describe what is there; do not ask for what is not.
 EXCAVATION = (
-    "The yellow toy digger has excavated a real hole straight through the wooden "
-    "tabletop beneath it. A heap of dark damp earth is piled on the table beside "
-    "the hole, spilling onto the woven runner. The torn edge of the placemat "
-    "hangs into the hole. Splintered wood around the rim. The digger sits at the "
-    "edge of the hole it made, partly covering it."
+    "The dark gap already present in the tabletop, to the left of the yellow toy "
+    "digger, is a real hole smashed clean through the wooden table. Render it as "
+    "a hole: splintered pale wood around its rim, darkness inside it, the woven "
+    "runner torn at its edge and sagging into it. A heap of dark damp earth is "
+    "piled on the table beside the hole. The digger sits at the edge of the hole "
+    "it made, partly in front of it."
 )
 
 
@@ -131,18 +138,46 @@ def overlay(plate_frame: Path, keyframe: Path, out: Path) -> Path:
     return out
 
 
+def match_to_plate(keyframe: Path, plate_frame: Path, out: Path) -> Path:
+    """Resize the keyframe to the plate's exact dimensions.
+
+    Editors return their own canvas size - Nano Banana gave 1376x768 against a
+    1920x1080 plate. That is only ~0.8% of aspect, but the entire point of this
+    pipeline is that the keyframe and the plate describe the same camera, and a
+    silent rescale is exactly the kind of small perspective error that gets
+    animated beautifully.
+    """
+    w, h = _dimensions(plate_frame)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(keyframe),
+         "-vf", f"scale={w}:{h}:flags=lanczos", "-frames:v", "1", str(out)],
+        check=True,
+    )
+    return out
+
+
+def _dimensions(path: Path) -> tuple[int, int]:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    w, h = (int(v) for v in out.split(","))
+    return w, h
+
+
 def render_to_real(
     plate: Path,
     keyframe: Path,
     out: Path,
     *,
-    width: int = 1280,
-    height: int = 720,
     frames: int = 42,
 ) -> tuple[Path, float]:
     """Repaint the plate's surfaces, keeping its geometry, guided by the keyframe."""
     import fal_client
 
+    width, height = _dimensions(plate)
     cost = 0.0024075 * (width * height * frames) / 1_000_000
     result = fal_client.subscribe(
         "fal-ai/ltx-2.3-quality/render-to-real",

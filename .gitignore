@@ -15,3 +15,10 @@ __pycache__/
 .env
 assets/splats/*.ply
 assets/plates/
+
+# macOS
+.DS_Store
+
+# Generated spike and capture output
+assets/spike/
+assets/capture/

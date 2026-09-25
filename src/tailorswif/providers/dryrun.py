@@ -15,6 +15,9 @@ from .base import ModelSpec
 class DryRunProvider:
     name = "dryrun"
 
+    def upload(self, path: str) -> str:
+        return f"dryrun://{Path(path).name}"
+
     def generate(
         self,
         *,
@@ -23,6 +26,8 @@ class DryRunProvider:
         duration_s: float,
         out_path: str,
         start_image: str | None = None,
+        end_image: str | None = None,
+        resolution: str = "1080p",
     ) -> float:
         path = Path(out_path).with_suffix(".txt")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -31,8 +36,10 @@ class DryRunProvider:
                 [
                     f"model:      {spec.key} ({spec.model_id})",
                     f"duration:   {duration_s:.1f}s",
+                    f"resolution: {resolution}",
                     f"would cost: ${spec.price(duration_s):.3f}",
                     f"start_image:{start_image or '-'}",
+                    f"end_image:  {end_image or '-'}",
                     "",
                     "prompt:",
                     prompt,

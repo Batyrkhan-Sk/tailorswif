@@ -14,12 +14,13 @@ import sys
 from pathlib import Path
 
 from . import sequence as seq
+from . import strobe as stb
 from . import traverse as trv
 from .assemble import build
 from .banned import ConceptRejected
 from .experiment import EXPERIMENT_NAME, matrix, pair_count
 from .ledger import Ledger
-from .providers.base import CATALOG, Budget, BudgetExceeded
+from .providers.base import CATALOG, TIER_RESOLUTION, Budget, BudgetExceeded
 from .rank import CRITERIA, elo, group_ratings
 from .web import serve
 
@@ -46,6 +47,7 @@ def _provider(name: str):
 CUTS = {
     "sequence": (seq, seq.SEQUENCE_NAME, seq.SEQUENCE_MODEL),
     "traverse": (trv, trv.TRAVERSE_NAME, trv.TRAVERSE_MODEL),
+    "strobe": (stb, stb.STROBE_NAME, stb.STROBE_MODEL),
 }
 
 
@@ -98,8 +100,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"\n{n} renders, ${total:.2f} to run.")
     if args.mode in CUTS:
         mod = CUTS[args.mode][0]
-        print(f"{len(mod.PROBE_ORDERS) * len(mod.PROBE_MODELS)} of those are "
-              f"probes on {', '.join(mod.PROBE_MODELS)} for the model comparison.")
+        if probes := len(mod.PROBE_ORDERS) * len(mod.PROBE_MODELS):
+            print(f"{probes} of those are probes on "
+                  f"{', '.join(mod.PROBE_MODELS)} for the model comparison.")
         risky = [s.order for s in mod.SHOTS if s.render_risk >= 3]
         if risky:
             print(f"shot {', '.join(str(o) for o in risky)} is high-risk to "
@@ -156,6 +159,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 prompt=shot.prompt(),
                 duration_s=shot.render_duration_s,
                 out_path=str(out),
+                # A tier and its rate travel together: entries priced for a
+                # cheaper resolution must ask for that resolution, or the
+                # budget guard reserves against a quote that is 5x too low.
+                resolution=TIER_RESOLUTION.get(model, "1080p"),
             )
         except Exception as exc:  # a provider failure must not lose the run
             budget.release(quote)
@@ -185,6 +192,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     elif ok:
         print(f"next: uv run tailorswif rank   ({pair_count(ok)} comparisons)")
     return 0
+
+
+def cmd_smoke(args: argparse.Namespace) -> int:
+    """Render one twin pair and cut it together. The cheapest real answer."""
+    return stb.run_smoke(
+        _provider(args.provider),
+        root=Path(args.root) / stb.STROBE_NAME / "smoke",
+        budget=Budget(ceiling_usd=args.budget),
+        at_s=args.at,
+        hold_s=args.hold,
+    )
 
 
 def cmd_assemble(args: argparse.Namespace) -> int:
@@ -286,9 +304,11 @@ def main() -> int:
     parser.add_argument("--ledger", default=DEFAULT_LEDGER)
     parser.add_argument("--root", default=DEFAULT_ROOT)
     parser.add_argument(
-        "--mode", default="sequence", choices=("sequence", "traverse", "grid"),
+        "--mode", default="sequence",
+        choices=("sequence", "traverse", "strobe", "grid"),
         help="sequence: one altered law, one street, escalating (default). "
              "traverse: one figure through twelve spaces, tonal not ruled. "
+             "strobe: first-person nightclub, faces legible only in the flash. "
              "grid: the same shot across models x staging, no cut.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -310,6 +330,20 @@ def main() -> int:
              "shot before committing to the whole run - a wrong endpoint or "
              "payload then costs cents instead of eighteen failures.",
     )
+
+    smoke = sub.add_parser(
+        "smoke",
+        help="render the S04/S04X twin pair at 480p and cut them together - "
+             "the cheapest test that the strobe cut is viable at all",
+    )
+    smoke.add_argument("--provider", default="dryrun", choices=("dryrun", "fal"))
+    smoke.add_argument("--budget", type=float, default=5.0, help="USD ceiling")
+    smoke.add_argument("--at", type=float, default=2.0,
+                       help="seconds into the clean take to cut away")
+    smoke.add_argument("--hold", type=float, default=0.5,
+                       help="how long the anomaly is held, in seconds. 0.5 is "
+                            "twelve frames at 24fps, the middle of the window "
+                            "where it registers without being readable")
 
     asm = sub.add_parser("assemble", help="cut the sequence together")
     asm.add_argument("--model", default=None)
@@ -335,8 +369,8 @@ def main() -> int:
 
     args = parser.parse_args()
     handler = {
-        "plan": cmd_plan, "run": cmd_run, "assemble": cmd_assemble,
-        "rank": cmd_rank, "results": cmd_results,
+        "plan": cmd_plan, "run": cmd_run, "smoke": cmd_smoke,
+        "assemble": cmd_assemble, "rank": cmd_rank, "results": cmd_results,
     }[args.cmd]
     try:
         return handler(args)

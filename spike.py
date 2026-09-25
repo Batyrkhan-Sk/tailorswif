@@ -7,7 +7,9 @@ before the expensive one runs.
 import sys
 from pathlib import Path
 
-from tailorswif.spike import EXCAVATION, make_keyframe, overlay, render_to_real
+from tailorswif.spike import (
+    EXCAVATION, make_keyframe, match_to_plate, overlay, render_to_real,
+)
 
 PLATES = Path("assets/plates")
 OUT = Path("assets/spike")
@@ -32,7 +34,9 @@ def render() -> None:
     kf = OUT / "keyframe.png"
     if not kf.exists():
         sys.exit(f"missing {kf} - run `uv run python spike.py keyframe` first")
-    video, cost = render_to_real(PLATE, kf, OUT / "result.mp4")
+    matched = match_to_plate(kf, FRAME, OUT / "keyframe_matched.png")
+    print(f"keyframe matched to plate -> {matched}")
+    video, cost = render_to_real(PLATE, matched, OUT / "result.mp4")
     print(f"\n{video}  (~${cost})")
     print("Now the actual test: does the hole stay in the table as the camera moves?")
 
