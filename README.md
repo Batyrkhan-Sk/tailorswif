@@ -1,12 +1,16 @@
-# tailorswif — phase 0
+# tailorswif
 
-Builds **one 50-second sequence**: twelve shots, one street, one escalating
-rule. Costs **$9.86**. Ends with a video you can send someone.
+Tools for making surreal AI video that looks designed.
 
-This does not generate full music videos. That is deliberate. The riskiest
-unknown is not the pipeline — it is whether the register is reachable at all
-with current models, and whether twelve separately generated shots hold together
-as one place. Find that out for $10 before building anything.
+The idea is simple. Take an ordinary place. Change one rule of reality. Film it
+as if nothing is wrong — no zooming in on the strange part, nobody in the shot
+reacting to it. Shoot it like you would shoot anything else.
+
+## Inspired by
+
+A$AP Rocky — *Tailor Swif*, directed by Vania Heymann and Gal Muggia.
+
+![Tailor Swif](https://media.tenor.com/rJhCagc71R0AAAAM/asap-rocky-tailor-swif.gif)
 
 ## The sequence
 
